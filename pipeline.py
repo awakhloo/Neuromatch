@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
+from glob import glob
 
-def processer(folders, truncate = 1000, return_stim = True) : 
+def processer(folders, truncate = 1000, return_stim = True, mr_clean = True ) : 
     '''
     Args -
     folders : list of folders containing steinmetz data set
@@ -13,7 +14,7 @@ def processer(folders, truncate = 1000, return_stim = True) :
     and neuron ID
     Stimulus : dataframe containing mouse ID, stim onset time, response, contrast level, feedback
     '''
-    neural_df = pd.DataFrame(columns = ['spike_t', 'area', 'maus', 'stim_t'])
+    neural_df = pd.DataFrame(columns = ['spike_t', 'area', 'maus'])
     for mouse, folder in enumerate(folders) :         
         spk = np.load(f'{folder}/spikes.times.npy', allow_pickle = True)
         spk = spk.reshape((spk.shape[0], ))
@@ -83,8 +84,13 @@ def processer(folders, truncate = 1000, return_stim = True) :
                             'response_type' : response_type, 'rt' : response_t})
             subj_df['maus'] = i
             all_subj_df = all_subj_df.append(subj_df, ignore_index = True)
+            
+        if mr_clean == True : all_subj_df = MR_clean(all_subj_df) 
+            
         print('''~~~ OOOoOOOOooOoOOOOOOOOOOoooOooOOOOOOo ~~~''')
+        
         return neural_df, all_subj_df
+    
             
     else: return neural_df
 
@@ -252,7 +258,7 @@ def MR_clean(dat) :
                        'split_by', 'feedback', 'q_init', 'stimtime']]
     return dat
 
-def extract_trial_stim_avg(zone, stimulus_df, relevant_n, bins = .20) : 
+def extract_trial_stim_avg(zone, stim, relevant_n, bins = .20) : 
     ''' 
     zone : processer df containing maus, area, neuron, and spike time 
     relevant : neurons to slice out
@@ -269,18 +275,17 @@ def extract_trial_stim_avg(zone, stimulus_df, relevant_n, bins = .20) :
             # grab a slice of the data containing a particular relevant area 
             area_subset = relevant_n_slice[relevant_n_slice.area == area]
             area_spike_set = np.array([])    
+            num_neurons = len(area_subset.neuron.unique())
             for stim_time in stim.loc[stim.subj_idx == mouse].stimtime :
                 #calculate trial by trial post stimulus spiking avg 
                 n_spikes = len(
                     area_subset[(area_subset.spike_t <= stim_time + bins) &
                                (stim_time <= area_subset.spike_t)].spike_t.values)
-                trial_avg = n_spikes / bins  
+                trial_avg = n_spikes / bins / num_neurons
                 area_spike_set = np.append(area_spike_set, trial_avg)
             mouse_df[area] = area_spike_set
             #print(area_spike_set.shape)
         mouse_df['maus'] = mouse 
-        print(mouse)
-        print(mouse_df.shape)
         full_df = full_df.append(mouse_df, ignore_index = True)
     print('~~~ young success ~~~~')
     return full_df 
