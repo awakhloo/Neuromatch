@@ -251,3 +251,36 @@ def MR_clean(dat) :
     dat = dat.loc[: , ['rt', 'subj_idx', 'response', 'response_type',
                        'split_by', 'feedback', 'q_init', 'stimtime']]
     return dat
+
+def extract_trial_stim_avg(zone, stimulus_df, relevant_n, bins = .20) : 
+    ''' 
+    zone : processer df containing maus, area, neuron, and spike time 
+    relevant : neurons to slice out
+    stimulus_df : MR_clean df containing stim times 
+    -------------------
+    returns : df containing spike averages for a given time following stimulus onset'''
+    full_df = pd.DataFrame()
+    for mouse in zone.maus.unique() : 
+        print(f'Generating mouse {mouse} spike rate data ...')
+        mouse_df = pd.DataFrame()
+        relevant_n_slice = zone.loc[(zone.maus == mouse) & 
+                                    (zone.area.isin(relevant_n))] #grab any relevant neuron subset
+        for area in relevant_n_slice.area.unique() :
+            # grab a slice of the data containing a particular relevant area 
+            area_subset = relevant_n_slice[relevant_n_slice.area == area]
+            area_spike_set = np.array([])    
+            for stim_time in stim.loc[stim.subj_idx == mouse].stimtime :
+                #calculate trial by trial post stimulus spiking avg 
+                n_spikes = len(
+                    area_subset[(area_subset.spike_t <= stim_time + bins) &
+                               (stim_time <= area_subset.spike_t)].spike_t.values)
+                trial_avg = n_spikes / bins  
+                area_spike_set = np.append(area_spike_set, trial_avg)
+            mouse_df[area] = area_spike_set
+            #print(area_spike_set.shape)
+        mouse_df['maus'] = mouse 
+        print(mouse)
+        print(mouse_df.shape)
+        full_df = full_df.append(mouse_df, ignore_index = True)
+    print('~~~ young success ~~~~')
+    return full_df 
