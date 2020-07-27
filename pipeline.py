@@ -15,7 +15,9 @@ def processer(folders, truncate = 1000, return_stim = True, mr_clean = True ) :
     Stimulus : dataframe containing mouse ID, stim onset time, response, contrast level, feedback
     '''
     neural_df = pd.DataFrame(columns = ['spike_t', 'area', 'maus'])
-    for mouse, folder in enumerate(folders) :         
+    if type(folders) == str : folders = [folders] #add for compatibility with pipeline iterating 
+    for mouse, folder in enumerate(folders) :
+        print(folder)
         spk = np.load(f'{folder}/spikes.times.npy', allow_pickle = True)
         spk = spk.reshape((spk.shape[0], ))
         if truncate != None : spk = spk[spk <= truncate]
@@ -94,26 +96,22 @@ def processer(folders, truncate = 1000, return_stim = True, mr_clean = True ) :
             
     else: return neural_df
 
-def frequency_transform(folders = None, dat = None, truncate = 500, return_stim = True,
+def frequency_transform(folder, dat = None, truncate = 500, return_stim = True,
                         bin_size = 0.02) : 
     '''
     Args - 
     folders : glob folders to pass on to parent processer function
     bin_size : bin sizes for spike trains
+    NOTE THAT THIS ONLY WORKS FOR ONE MOUSE. USE PIPELINE FOR MULTIPLE MICE. 
     ----------
     Returns - 
     Processer neural and stimulus dataframes as well as a frequency transformed version of 
-    the neural df containign spike trains for each neuron over all trials, as well as a col
-    for mouse IDs
+    the neural df containign spike trains for each neuron over all trials
     '''
     if dat == None : 
         print('''Getting spike time data ...''')
-        dat, stim_df = processer(folders, truncate = truncate, return_stim = return_stim)
-        stimuli = []
-        for i, folder in enumerate(folders) : 
-            stimuli.append(np.load(f'{folder}/trials.visualStim_times.npy', allow_pickle = True)) 
-        stimuli = np.concatenate(stimuli)
-        stimuli = stimuli.reshape(stimuli.shape[0], )
+        neur,  stim_df = processer(folder, truncate = truncate, return_stim = return_stim)
+        stimuli = np.load(f'{folder}/trials.visualStim_times.npy', allow_pickle = True)
         
         cl = np.load(f'{folder}/trials.visualStim_contrastLeft.npy', allow_pickle = True)
         cl = cl.reshape(cl.shape[0], )
@@ -129,14 +127,13 @@ def frequency_transform(folders = None, dat = None, truncate = 500, return_stim 
         response_t = response_t.reshape(response_t.shape[0], )
         response_type = np.load(f'{folder}/trials.response_choice.npy', allow_pickle = True)
         response_type = response_type.reshape(response_type.shape[0], )
-        
     
     if truncate != None : 
         #truncate the data and then form a spike train with a fixed bin size over that interval.
         #use the histogram function with prefixed bins and range. slice out first element containing values.
         bins = np.arange(0, truncate + bin_size, bin_size)
         print('Forming groups ... ')
-        dat = dat.loc[dat.spike_t < truncate] #slice time stamps before truncate time
+        dat = neur.loc[neur.spike_t < truncate] #slice time stamps before truncate time
         groups = [dat[dat.neuron == i].spike_t.values for i in dat.neuron.unique()]
         
         print('''Forming spike trains ...''')
@@ -144,9 +141,10 @@ def frequency_transform(folders = None, dat = None, truncate = 500, return_stim 
                   for group in groups]
         
         print('''Forming stimulus series ...''')
-        stimuli = stimuli[stimuli < truncate]
+        stimuli = stimuli[stimuli < truncate] #we may need to change this to match processer syntax -- i.e. loading the stim shape based on rew time
         response_t = response_t[response_t < truncate]
         response_type = response_type[:response_t.shape[0]]
+        if stimuli.shape[0] == response_t.shape[0] + 1 : stimuli = stimuli[:-1]
         group_stim = np.histogram(stimuli, bins = bins,  range = (0, truncate))[0]
         group_response = np.histogram(response_t, bins = bins,  range = (0, truncate))[0]
         group_response[group_response != 0] = response_type
@@ -180,17 +178,18 @@ def frequency_transform(folders = None, dat = None, truncate = 500, return_stim 
     df['reward'] = group_reward
     print('~~~ the power of christ literally compels you ~~~')
     #return {'spikes' : df, 'full' : dat, 'behavioral' : stim_df} 
-    return df, dat, stim_df 
+    return df, neur, stim_df 
 '''spike trains, labelled neurons with spike time stamps, stimulus df'''
 
-def pipeline(path, truncate = 1000, bin_size = 0.02) : 
+def pipeline(folders, path = None, truncate = 1000, bin_size = 0.02) : 
     '''
     Args - 
-    Path : file path for all Steinmetz mice folders
-    other two same as before
+    Path : file path for all Steinmetz mice folders for loading. 
+    Folders : list containing the paths of folders. Set to none if feeding path.
+    Truncate : how long to truncate each mouse run . 
     -----------------
     Returns -
-    frequency transform dataframes stitched together for all mice in folders
+    frequency transform dataframes stitched together for all mice in folders, stimulus dataframe for all mice passed, time stamp neural spike data for all mice
     '''
     all_dat_neur = pd.DataFrame()
     all_dat_time_stamp_neur = pd.DataFrame()
@@ -198,8 +197,7 @@ def pipeline(path, truncate = 1000, bin_size = 0.02) :
     #labels = []
     if path != None : folders = glob(path)
     for i, folder in enumerate(folders): 
-        print(folder)
-        spike_df, labelled_neurons, stim_df = frequency_transform(folders = [folder], truncate = truncate)
+        spike_df, labelled_neurons, stim_df = frequency_transform(folder, truncate = truncate)
         #label = [labelled_neurons.neuron, labelled_neurons.area]
         spike_df['maus'] = i 
         stim_df['maus'] = i
@@ -207,7 +205,6 @@ def pipeline(path, truncate = 1000, bin_size = 0.02) :
         all_dat_neur = all_dat_neur.append(spike_df, ignore_index = True)
         all_dat_stim = all_dat_stim.append(stim_df, ignore_index = True)
         all_dat_time_stamp_neur = all_dat_time_stamp_neur.append(labelled_neurons, ignore_index = True)
-        #labels.append(label)
     return all_dat_neur, all_dat_stim, all_dat_time_stamp_neur     
 
 def filt(folders, regions_to_pull = np.array(['GPe', 'LH', 'MB', 'MOp', 'MOs', 'MRN', 'TH'])) : 
@@ -236,11 +233,11 @@ def stimulus(row) :
     '''return 1 for left, 0 for right contrast. corresponds to split_by column '''
     if row.cl > row.cr : return 1
     elif row.cr > row.cl : return 0
-    elif row.cr == row.cl : return 'DROPME'
+    elif row.cr == row.cl : return '999'
     
 def reaction_coding(row) : 
     '''response column'''
-    if row.response_type == 0 : return 'DROPME'
+    if row.response_type == 0 : return '999'
     if row.response_type == -1 : return 0
     else : return 1
     
@@ -253,14 +250,15 @@ def MR_clean(dat) :
     dat['response'] = dat.apply(reaction_coding, axis = 1 )
     dat['q_init'] = 0.7
     dat = dat.rename(columns = {'maus' : 'subj_idx'})
-    dat = dat.loc[dat.split_by != 'DROPME']
+    dat = dat.loc[dat.split_by != 999]
+    dat = dat.loc[dat.response != 999]
     dat = dat.loc[: , ['rt', 'subj_idx', 'response', 'response_type',
                        'split_by', 'feedback', 'q_init', 'stimtime']]
     return dat
 
 def extract_trial_stim_avg(zone, stim, relevant_n, bins = .20) : 
     ''' 
-    zone : processer df containing maus, area, neuron, and spike time 
+    zone : processer type df containing maus, area, neuron, and spike time 
     relevant : neurons to slice out
     stimulus_df : MR_clean df containing stim times 
     -------------------
