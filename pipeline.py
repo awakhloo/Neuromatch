@@ -144,7 +144,11 @@ def frequency_transform(folder, dat = None, truncate = 500, return_stim = True,
         stimuli = stimuli[stimuli < truncate] #we may need to change this to match processer syntax -- i.e. loading the stim shape based on rew time
         response_t = response_t[response_t < truncate]
         response_type = response_type[:response_t.shape[0]]
-        if stimuli.shape[0] == response_t.shape[0] + 1 : stimuli = stimuli[:-1]
+        if stimuli.shape[0] == response_t.shape[0] + 1 :
+            stimuli = stimuli[:-1]
+            print('o fuck')
+        print(stimuli.shape[0], response_t.shape[0])
+        print(stimuli.shape[0], response_t.shape[0] + 1) 
         group_stim = np.histogram(stimuli, bins = bins,  range = (0, truncate))[0]
         group_response = np.histogram(response_t, bins = bins,  range = (0, truncate))[0]
         group_response[group_response != 0] = response_type
@@ -205,6 +209,7 @@ def pipeline(folders, path = None, truncate = 1000, bin_size = 0.02) :
         all_dat_neur = all_dat_neur.append(spike_df, ignore_index = True)
         all_dat_stim = all_dat_stim.append(stim_df, ignore_index = True)
         all_dat_time_stamp_neur = all_dat_time_stamp_neur.append(labelled_neurons, ignore_index = True)
+    all_dat_stim['subj_idx'] = all_dat_stim['maus'].copy()
     return all_dat_neur, all_dat_stim, all_dat_time_stamp_neur     
 
 def filt(folders, regions_to_pull = np.array(['GPe', 'LH', 'MB', 'MOp', 'MOs', 'MRN', 'TH'])) : 
