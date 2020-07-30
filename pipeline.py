@@ -97,7 +97,7 @@ def processer(folders, truncate = 1000, return_stim = True, mr_clean = True ) :
     else: return neural_df
 
 def frequency_transform(folder, dat = None, truncate = 500, return_stim = True,
-                        bin_size = 0.02) : 
+                        bin_size = 0.02, mr_clean = True) : 
     '''
     Args - 
     folders : glob folders to pass on to parent processer function
@@ -110,7 +110,7 @@ def frequency_transform(folder, dat = None, truncate = 500, return_stim = True,
     '''
     if dat == None : 
         print('''Getting spike time data ...''')
-        neur,  stim_df = processer(folder, truncate = truncate, return_stim = return_stim)
+        neur,  stim_df = processer(folder, truncate = truncate, return_stim = return_stim, mr_clean = mr_clean)
         stimuli = np.load(f'{folder}/trials.visualStim_times.npy', allow_pickle = True)
         
         cl = np.load(f'{folder}/trials.visualStim_contrastLeft.npy', allow_pickle = True)
@@ -131,7 +131,7 @@ def frequency_transform(folder, dat = None, truncate = 500, return_stim = True,
     if truncate != None : 
         #truncate the data and then form a spike train with a fixed bin size over that interval.
         #use the histogram function with prefixed bins and range. slice out first element containing values.
-        bins = np.arange(0, truncate + bin_size, bin_size)
+        bins = np.arange(0, truncate + bin_size, bin_size) # i think we should delete + bin_size
         print('Forming groups ... ')
         dat = neur.loc[neur.spike_t < truncate] #slice time stamps before truncate time
         groups = [dat[dat.neuron == i].spike_t.values for i in dat.neuron.unique()]
@@ -144,11 +144,8 @@ def frequency_transform(folder, dat = None, truncate = 500, return_stim = True,
         stimuli = stimuli[stimuli < truncate] #we may need to change this to match processer syntax -- i.e. loading the stim shape based on rew time
         response_t = response_t[response_t < truncate]
         response_type = response_type[:response_t.shape[0]]
-        if stimuli.shape[0] == response_t.shape[0] + 1 :
-            stimuli = stimuli[:-1]
-            print('o fuck')
-        print(stimuli.shape[0], response_t.shape[0])
-        print(stimuli.shape[0], response_t.shape[0] + 1) 
+        response_type[response_type == 0] = 999
+        if stimuli.shape[0] == response_t.shape[0] + 1 : stimuli = stimuli[:-1]
         group_stim = np.histogram(stimuli, bins = bins,  range = (0, truncate))[0]
         group_response = np.histogram(response_t, bins = bins,  range = (0, truncate))[0]
         group_response[group_response != 0] = response_type
@@ -185,7 +182,7 @@ def frequency_transform(folder, dat = None, truncate = 500, return_stim = True,
     return df, neur, stim_df 
 '''spike trains, labelled neurons with spike time stamps, stimulus df'''
 
-def pipeline(folders, path = None, truncate = 1000, bin_size = 0.02) : 
+def pipeline(folders, path = None, truncate = 1000, bin_size = 0.02, mr_clean = True) : 
     '''
     Args - 
     Path : file path for all Steinmetz mice folders for loading. 
@@ -201,7 +198,7 @@ def pipeline(folders, path = None, truncate = 1000, bin_size = 0.02) :
     #labels = []
     if path != None : folders = glob(path)
     for i, folder in enumerate(folders): 
-        spike_df, labelled_neurons, stim_df = frequency_transform(folder, truncate = truncate)
+        spike_df, labelled_neurons, stim_df = frequency_transform(folder, truncate = truncate, bin_size = bin_size, mr_clean = mr_clean)
         #label = [labelled_neurons.neuron, labelled_neurons.area]
         spike_df['maus'] = i 
         stim_df['maus'] = i
@@ -209,7 +206,6 @@ def pipeline(folders, path = None, truncate = 1000, bin_size = 0.02) :
         all_dat_neur = all_dat_neur.append(spike_df, ignore_index = True)
         all_dat_stim = all_dat_stim.append(stim_df, ignore_index = True)
         all_dat_time_stamp_neur = all_dat_time_stamp_neur.append(labelled_neurons, ignore_index = True)
-    all_dat_stim['subj_idx'] = all_dat_stim['maus'].copy()
     return all_dat_neur, all_dat_stim, all_dat_time_stamp_neur     
 
 def filt(folders, regions_to_pull = np.array(['GPe', 'LH', 'MB', 'MOp', 'MOs', 'MRN', 'TH'])) : 
